@@ -34,6 +34,7 @@ jobs:
           set -euo pipefail
 
           UPSTREAM_IMAGE="paradedb/paradedb:latest-pg18"
+          UPSTREAM_TAG="${UPSTREAM_IMAGE##*:}"
           docker pull "${UPSTREAM_IMAGE}"
 
           PG_MAJOR="$(docker image inspect "${UPSTREAM_IMAGE}" --format '{{range .Config.Env}}{{println .}}{{end}}' | awk -F= '$1=="PG_MAJOR"{print $2; exit}')"
@@ -49,6 +50,12 @@ jobs:
           PARADEDB_VERSION_RAW="$(docker image inspect "${UPSTREAM_IMAGE}" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')"
           if [[ -z "${PARADEDB_VERSION_RAW}" || "${PARADEDB_VERSION_RAW}" == "<no value>" ]]; then
             PARADEDB_VERSION_RAW="$(docker image inspect "${UPSTREAM_IMAGE}" --format '{{range .Config.Env}}{{println .}}{{end}}' | awk -F= '$1=="PARADEDB_VERSION"{print $2; exit}')"
+          fi
+
+          if [[ -z "${PARADEDB_VERSION_RAW}" || "${PARADEDB_VERSION_RAW}" == "<no value>" ]]; then
+            PARADEDB_VERSION_RAW="$(
+              UPSTREAM_TAG="${UPSTREAM_TAG}" python3 -c $'import json,os,re,urllib.parse,urllib.request\nrepo="paradedb/paradedb"\ntag=os.environ["UPSTREAM_TAG"]\nbase=f"https://hub.docker.com/v2/repositories/{repo}/tags"\nreq=lambda u: urllib.request.Request(u,headers={"Accept":"application/json"})\ncur=json.load(urllib.request.urlopen(req(f"{base}/{urllib.parse.quote(tag)}/"),timeout=20))\ntarget={i.get("digest") for i in cur.get("images",[]) if i.get("digest")}\npat=re.compile(r"^v?[0-9]+\\.[0-9]+\\.[0-9]+(?:-pg[0-9]+)?$")\nurl=f"{base}?page_size=100"\ncands=set()\nwhile url:\n d=json.load(urllib.request.urlopen(req(url),timeout=20))\n for e in d.get("results",[]):\n  n=e.get("name","")\n  if not pat.match(n):\n   continue\n  digs={i.get("digest") for i in e.get("images",[]) if i.get("digest")}\n  if target & digs:\n   cands.add(re.sub(r"-pg[0-9]+$","",n))\n url=d.get("next")\ndef k(v):\n m=re.match(r"^v?([0-9]+)\\.([0-9]+)\\.([0-9]+)$",v)\n return tuple(int(x) for x in m.groups()) if m else (-1,-1,-1)\nprint(sorted(cands,key=k)[-1] if cands else "")' 2>/dev/null || true
+            )"
           fi
 
           if [[ -z "${PARADEDB_VERSION_RAW}" || "${PARADEDB_VERSION_RAW}" == "<no value>" ]]; then
