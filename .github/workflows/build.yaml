@@ -76,6 +76,7 @@ jobs:
 
           RELEASE_TAG="postgres-${PG_MAJOR}-paradedb-${PARADEDB_VERSION}"
           RELEASE_SERIES_TAG="postgres-${PG_MAJOR}-paradedb-${PARADEDB_SERIES}"
+          RELEASE_PG_TAG="postgres-${PG_MAJOR}"
 
           {
             echo "upstream_image=${UPSTREAM_IMAGE}"
@@ -84,6 +85,7 @@ jobs:
             echo "paradedb_series=${PARADEDB_SERIES}"
             echo "release_tag=${RELEASE_TAG}"
             echo "release_series_tag=${RELEASE_SERIES_TAG}"
+            echo "release_pg_tag=${RELEASE_PG_TAG}"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Build and push image
@@ -97,6 +99,7 @@ jobs:
             PARADEDB_VERSION=${{ steps.meta.outputs.paradedb_version }}
           tags: |
             ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.release_pg_tag }}
             ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.release_tag }}
             ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.release_series_tag }}
           cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache
@@ -110,6 +113,7 @@ jobs:
           generate_release_notes: true
           body: |
             **Image:** `ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.release_tag }}`
+            **Postgres Alias:** `ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.release_pg_tag }}`
             **Series Alias:** `ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.release_series_tag }}`
             **Latest Alias:** `ghcr.io/${{ github.repository }}:latest`
             **Upstream Image:** `${{ steps.meta.outputs.upstream_image }}`
