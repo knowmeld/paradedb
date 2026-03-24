@@ -74,9 +74,9 @@ jobs:
             PARADEDB_SERIES="${PARADEDB_VERSION}"
           fi
 
-          RELEASE_TAG="postgres-${PG_MAJOR}-paradedb-${PARADEDB_VERSION}"
-          RELEASE_SERIES_TAG="postgres-${PG_MAJOR}-paradedb-${PARADEDB_SERIES}"
-          RELEASE_PG_TAG="postgres-${PG_MAJOR}"
+          RELEASE_TAG="${PG_MAJOR}-paradedb-${PARADEDB_VERSION}"
+          RELEASE_SERIES_TAG="${PG_MAJOR}-paradedb-${PARADEDB_SERIES}"
+          RELEASE_PG_TAG="${PG_MAJOR}"
 
           {
             echo "upstream_image=${UPSTREAM_IMAGE}"
@@ -86,6 +86,7 @@ jobs:
             echo "release_tag=${RELEASE_TAG}"
             echo "release_series_tag=${RELEASE_SERIES_TAG}"
             echo "release_pg_tag=${RELEASE_PG_TAG}"
+            echo "target_image=ghcr.io/${GITHUB_REPOSITORY_OWNER}/postgres"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Build and push image
@@ -98,12 +99,12 @@ jobs:
             PG_MAJOR=${{ steps.meta.outputs.pg_major }}
             PARADEDB_VERSION=${{ steps.meta.outputs.paradedb_version }}
           tags: |
-            ghcr.io/${{ github.repository }}:latest
-            ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.release_pg_tag }}
-            ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.release_tag }}
-            ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.release_series_tag }}
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache,mode=max
+            ${{ steps.meta.outputs.target_image }}:latest
+            ${{ steps.meta.outputs.target_image }}:${{ steps.meta.outputs.release_pg_tag }}
+            ${{ steps.meta.outputs.target_image }}:${{ steps.meta.outputs.release_tag }}
+            ${{ steps.meta.outputs.target_image }}:${{ steps.meta.outputs.release_series_tag }}
+          cache-from: type=registry,ref=${{ steps.meta.outputs.target_image }}:buildcache
+          cache-to: type=registry,ref=${{ steps.meta.outputs.target_image }}:buildcache,mode=max
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -112,10 +113,10 @@ jobs:
           name: ${{ steps.meta.outputs.release_tag }}
           generate_release_notes: true
           body: |
-            **Image:** `ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.release_tag }}`
-            **Postgres Alias:** `ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.release_pg_tag }}`
-            **Series Alias:** `ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.release_series_tag }}`
-            **Latest Alias:** `ghcr.io/${{ github.repository }}:latest`
+            **Image:** `${{ steps.meta.outputs.target_image }}:${{ steps.meta.outputs.release_tag }}`
+            **Postgres Alias:** `${{ steps.meta.outputs.target_image }}:${{ steps.meta.outputs.release_pg_tag }}`
+            **Series Alias:** `${{ steps.meta.outputs.target_image }}:${{ steps.meta.outputs.release_series_tag }}`
+            **Latest Alias:** `${{ steps.meta.outputs.target_image }}:latest`
             **Upstream Image:** `${{ steps.meta.outputs.upstream_image }}`
             **Postgres:** `${{ steps.meta.outputs.pg_major }}`
             **ParadeDB:** `${{ steps.meta.outputs.paradedb_version }}` (series `${{ steps.meta.outputs.paradedb_series }}`)
