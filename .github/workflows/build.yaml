@@ -27,20 +27,80 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Resolve upstream image versions
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          UPSTREAM_IMAGE="paradedb/paradedb:latest-pg18"
+          docker pull "${UPSTREAM_IMAGE}"
+
+          PG_MAJOR="$(docker image inspect "${UPSTREAM_IMAGE}" --format '{{range .Config.Env}}{{println .}}{{end}}' | awk -F= '$1=="PG_MAJOR"{print $2; exit}')"
+          if [[ -z "${PG_MAJOR}" ]]; then
+            if [[ "${UPSTREAM_IMAGE}" =~ -pg([0-9]+)$ ]]; then
+              PG_MAJOR="${BASH_REMATCH[1]}"
+            else
+              echo "Could not determine Postgres major version from ${UPSTREAM_IMAGE}"
+              exit 1
+            fi
+          fi
+
+          PARADEDB_VERSION_RAW="$(docker image inspect "${UPSTREAM_IMAGE}" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')"
+          if [[ -z "${PARADEDB_VERSION_RAW}" || "${PARADEDB_VERSION_RAW}" == "<no value>" ]]; then
+            PARADEDB_VERSION_RAW="$(docker image inspect "${UPSTREAM_IMAGE}" --format '{{range .Config.Env}}{{println .}}{{end}}' | awk -F= '$1=="PARADEDB_VERSION"{print $2; exit}')"
+          fi
+
+          if [[ -z "${PARADEDB_VERSION_RAW}" || "${PARADEDB_VERSION_RAW}" == "<no value>" ]]; then
+            echo "Could not determine ParadeDB version from ${UPSTREAM_IMAGE}"
+            exit 1
+          fi
+
+          PARADEDB_VERSION="${PARADEDB_VERSION_RAW#v}"
+          if [[ "${PARADEDB_VERSION}" =~ ^0\.([0-9]+)\.[0-9]+$ ]]; then
+            PARADEDB_SERIES="${BASH_REMATCH[1]}.x"
+          elif [[ "${PARADEDB_VERSION}" =~ ^([0-9]+)\.([0-9]+)\.[0-9]+$ ]]; then
+            PARADEDB_SERIES="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.x"
+          elif [[ "${PARADEDB_VERSION}" =~ ^([0-9]+)\.([0-9]+)$ ]]; then
+            PARADEDB_SERIES="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.x"
+          else
+            PARADEDB_SERIES="${PARADEDB_VERSION}"
+          fi
+
+          RELEASE_TAG="postgres-${PG_MAJOR}-paradedb-${PARADEDB_SERIES}"
+
+          {
+            echo "upstream_image=${UPSTREAM_IMAGE}"
+            echo "pg_major=${PG_MAJOR}"
+            echo "paradedb_version=${PARADEDB_VERSION}"
+            echo "paradedb_series=${PARADEDB_SERIES}"
+            echo "release_tag=${RELEASE_TAG}"
+          } >> "${GITHUB_OUTPUT}"
+
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ github.repository }}:latest
+          build-args: |
+            UPSTREAM_IMAGE=${{ steps.meta.outputs.upstream_image }}
+            PG_MAJOR=${{ steps.meta.outputs.pg_major }}
+            PARADEDB_VERSION=${{ steps.meta.outputs.paradedb_version }}
+          tags: |
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.release_tag }}
           cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache
           cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache,mode=max
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: latest
-          name: latest
+          tag_name: ${{ steps.meta.outputs.release_tag }}
+          name: ${{ steps.meta.outputs.release_tag }}
           generate_release_notes: true
           body: |
             **Image:** `ghcr.io/${{ github.repository }}:latest`
+            **Versioned Image:** `ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.release_tag }}`
+            **Upstream Image:** `${{ steps.meta.outputs.upstream_image }}`
+            **Postgres:** `${{ steps.meta.outputs.pg_major }}`
+            **ParadeDB:** `${{ steps.meta.outputs.paradedb_version }}` (series `${{ steps.meta.outputs.paradedb_series }}`)
